@@ -156,7 +156,8 @@
     const SUPABASE_URL = "https://iwvxsiyxrppjzxjsyyyu.supabase.co/rest/v1/"; 
     const SUPABASE_ANON_KEY = "sb_publishable_npClwo_gzdj-K0Qd3iVoIQ_EUsEqLv_";
 
-    const supabase =  supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Fixed initialization call:
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let inventoryCache = [];
 
@@ -169,9 +170,13 @@
 
     // Initial Data Fetch
     async function fetchAllData() {
-        const { data: items } = await supabase.from('inventory').select('*').order('name', { ascending: true });
-        const { data: logs } = await supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
+        const { data: items, error: iErr } = await supabase.from('inventory').select('*').order('name', { ascending: true });
+        const { data: logs, error: lErr } = await supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
         
+        if (iErr || lErr) {
+            console.error("Fetch Error:", iErr || lErr);
+        }
+
         inventoryCache = items || [];
         renderInventory(inventoryCache);
         renderLogs(logs || []);
@@ -193,7 +198,8 @@
             await supabase.from('logs').insert([{ text: `System initialized ${qty}x "${name}"` }]);
             addItemForm.reset();
         } else {
-            alert("Error adding item registry.");
+            console.error(error);
+            alert("Error adding item registry. Check your Supabase RLS policies!");
         }
     });
 
