@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Storage Tracker</title>
+    <title>Storage Unit Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -25,12 +25,12 @@
             padding: 20px;
         }
 
-        .container { max-width: 1000px; margin: 0 auto; }
+        .container { max-width: 1100px; margin: 0 auto; }
         header { text-align: center; margin-bottom: 30px; }
         h1 { margin-bottom: 5px; color: #0f172a; }
         p { color: #64748b; margin-top: 0; }
         .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
-        @media (min-width: 768px) { .grid { grid-template-columns: 1fr 2fr; } }
+        @media (min-width: 768px) { .grid { grid-template-columns: 1fr 1.5fr; } }
         
         .card {
             background: var(--card-bg);
@@ -49,6 +49,7 @@
         button { width: 100%; padding: 10px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-primary:hover { background: var(--primary-hover); }
+        .btn-secondary { background: #64748b; color: white; margin-top: 5px; }
         
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); }
@@ -67,248 +68,61 @@
         .log-item { padding: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 10px;}
         .log-time { color: #64748b; font-size: 0.8rem; white-space: nowrap; }
         .loading { text-align: center; color: #64748b; font-style: italic; }
+
+        /* Batch Cart UI Styles */
+        .batch-box { background: #f1f5f9; border-radius: 6px; padding: 12px; margin-bottom: 15px; border: 1px dashed #cbd5e1; }
+        .batch-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; }
+        .batch-item:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <header>
-        <h1>Cloud Storage Tracker</h1>
-        <p>Real-time team inventory management</p>
+        <h1>Storage Unit Tracker</h1>
+        <p>Real-time inventory management with batch processing</p>
     </header>
 
     <div class="grid">
         <div class="space-y">
             <div class="card" style="margin-bottom: 20px;">
-                <h2>Add New Item Types</h2>
+                <h2>Add New Item Registry</h2>
                 <form id="add-item-form">
                     <div class="form-group">
                         <label for="item-name">Item Name</label>
-                        <input type="text" id="item-name" required placeholder="e.g., Heavy Duty Totes">
+                        <input type="text" id="item-name" required placeholder="e.g., Folding Table">
                     </div>
                     <div class="form-group">
-                        <label for="item-qty">Initial Quantity</label>
-                        <input type="number" id="item-qty" min="0" value="0" required>
+                        <label for="item-max">Total Owned (Max Capacity Limit)</label>
+                        <input type="number" id="item-max" min="1" value="1" required placeholder="e.g., 1">
+                    </div>
+                    <div class="form-group">
+                        <label for="item-qty">Current Initial Stock inside Storage</label>
+                        <input type="number" id="item-qty" min="0" value="1" required>
                     </div>
                     <button type="submit" class="btn-primary">Add to System</button>
                 </form>
             </div>
 
             <div class="card" style="margin-bottom: 20px;">
-                <h2>Sign-In / Sign-Out</h2>
+                <h2>Batch Sign-In / Sign-Out</h2>
+                
+                <div style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px;">
+                    <label style="font-weight: bold; margin-bottom: 8px;">1. Stage an Item Adjustment</label>
+                    <div class="form-group">
+                        <select id="trans-item"><option value="">Loading items...</option></select>
+                    </div>
+                    <div class="form-group" style="display: flex; gap: 10px;">
+                        <select id="trans-type" style="flex: 2;">
+                            <option value="out">Sign-Out (Remove)</option>
+                            <option value="in">Sign-In (Return)</option>
+                        </select>
+                        <input type="number" id="trans-qty" min="1" value="1" style="flex: 1;" required>
+                    </div>
+                    <button type="button" id="btn-add-batch" class="btn-secondary">Stage Item Below ↓</button>
+                </div>
+
                 <form id="trans-form">
-                    <div class="form-group">
-                        <label for="trans-item">Select Item</label>
-                        <select id="trans-item" required>
-                            <option value="">Loading items...</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="trans-type">Action</label>
-                        <select id="trans-type" required>
-                            <option value="in">Sign-In (Add Stock)</option>
-                            <option value="out">Sign-Out (Remove Stock)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="trans-qty">Quantity</label>
-                        <input type="number" id="trans-qty" min="1" value="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="trans-user">Your Name</label>
-                        <input type="text" id="trans-user" required placeholder="Alex Smith">
-                    </div>
-                    <button type="submit" class="btn-primary">Submit Change</button>
-                </form>
-            </div>
-
-            <div class="card">
-                <h2>Live Activity Log</h2>
-                <ul id="log-list" class="log-list">
-                    <li class="loading">Connecting to database...</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Current Inventory</h2>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Item Name</th>
-                            <th>Status</th>
-                            <th>In Stock</th>
-                            <th>Adjust</th>
-                        </tr>
-                    </thead>
-                    <tbody id="inventory-table-body">
-                        <tr><td colspan="4" class="loading">Fetching current stock...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // Configure your Supabase Connection details here:
-    const SUPABASE_URL = "https://iwvxsiyxrppjzxjsyyyu.supabase.co"; 
-    const SUPABASE_ANON_KEY = "sb_publishable_npClwo_gzdj-K0Qd3iVoIQ_EUsEqLv_";
-
-    // Fixed initialization conflict
-    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    let inventoryCache = [];
-
-    // DOM Elements
-    const addItemForm = document.getElementById('add-item-form');
-    const transForm = document.getElementById('trans-form');
-    const transItemSelect = document.getElementById('trans-item');
-    const inventoryTableBody = document.getElementById('inventory-table-body');
-    const logList = document.getElementById('log-list');
-
-    // Initial Data Fetch
-    async function fetchAllData() {
-        const { data: items, error: iErr } = await db.from('inventory').select('*').order('name', { ascending: true });
-        const { data: logs, error: lErr } = await db.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
-        
-        if (iErr || lErr) {
-            console.error("Fetch Error:", iErr || lErr);
-        }
-
-        inventoryCache = items || [];
-        renderInventory(inventoryCache);
-        renderLogs(logs || []);
-    }
-
-    // Add New Item Type
-    addItemForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const name = document.getElementById('item-name').value.trim();
-        const qty = parseInt(document.getElementById('item-qty').value);
-
-        if (inventoryCache.some(item => item.name.toLowerCase() === name.toLowerCase())) {
-            alert('This item type already exists.');
-            return;
-        }
-
-        const { error } = await db.from('inventory').insert([{ name, qty }]);
-        if (!error) {
-            await db.from('logs').insert([{ text: `System initialized ${qty}x "${name}"` }]);
-            addItemForm.reset();
-        } else {
-            console.error(error);
-            alert("Error adding item registry. Check your Supabase RLS policies!");
-        }
-    });
-
-    // Formal Sign In / Sign Out Transaction
-    transForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const itemId = transItemSelect.value;
-        const type = document.getElementById('trans-type').value;
-        const qty = parseInt(document.getElementById('trans-qty').value);
-        const user = document.getElementById('trans-user').value.trim();
-
-        const item = inventoryCache.find(i => i.id === itemId);
-        if (!item) return;
-
-        if (type === 'out' && item.qty < qty) {
-            alert(`Insufficient stock! ${item.qty} remaining.`);
-            return;
-        }
-
-        const newQty = type === 'in' ? item.qty + qty : item.qty - qty;
-        
-        const { error } = await db.from('inventory').update({ qty: newQty }).eq('id', itemId);
-        if (!error) {
-            await db.from('logs').insert([{ text: `${user} signed ${type.toUpperCase()} ${qty}x "${item.name}"` }]);
-            transForm.reset();
-        }
-    });
-
-    // Inline +1 / -1 Quick Adjustment
-    async function adjustQty(id, amount) {
-        const item = inventoryCache.find(i => i.id === id);
-        if (!item) return;
-        if (amount < 0 && item.qty <= 0) return;
-
-        const { error } = await db.from('inventory').update({ qty: item.qty + amount }).eq('id', id);
-        if(!error) {
-            await db.from('logs').insert([{ text: `Quick adjustment: ${amount > 0 ? '+1' : '-1'} on "${item.name}"` }]);
-        }
-    }
-
-    // Delete Item
-    async function deleteItem(id) {
-        if (confirm("Permanently delete this item row?")) {
-            const item = inventoryCache.find(i => i.id === id);
-            await db.from('inventory').delete().eq('id', id);
-            if(item) await db.from('logs').insert([{ text: `Deleted item registry "${item.name}"` }]);
-        }
-    }
-
-    // Rendering UI
-    function renderInventory(items) {
-        inventoryTableBody.innerHTML = '';
-        transItemSelect.innerHTML = '<option value="">-- Choose an item --</option>';
-
-        if (items.length === 0) {
-            inventoryTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#64748b;">No items registered.</td></tr>`;
-            return;
-        }
-
-        items.forEach(item => {
-            const option = document.createElement('option');
-            option.value = item.id;
-            option.textContent = item.name;
-            transItemSelect.appendChild(option);
-
-            const statusClass = item.qty > 0 ? 'badge-success' : 'badge-danger';
-            const statusText = item.qty > 0 ? 'In Stock' : 'Out';
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${item.name}</strong></td>
-                <td><span class="badge ${statusClass}">${statusText}</span></td>
-                <td>${item.qty}</td>
-                <td>
-                    <div class="action-btns">
-                        <button onclick="adjustQty('${item.id}', 1)" class="btn-sm btn-success">+</button>
-                        <button onclick="adjustQty('${item.id}', -1)" class="btn-sm btn-danger">-</button>
-                        <button onclick="deleteItem('${item.id}')" class="btn-sm" style="background:#e2e8f0; margin-left:5px;">×</button>
-                    </div>
-                </td>
-            `;
-            inventoryTableBody.appendChild(tr);
-        });
-    }
-
-    function renderLogs(logs) {
-        logList.innerHTML = '';
-        if (logs.length === 0) {
-            logList.innerHTML = '<li>No recent activity logged.</li>';
-            return;
-        }
-        logs.forEach(log => {
-            const date = new Date(log.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            const li = document.createElement('li');
-            li.className = 'log-item';
-            li.innerHTML = `<span>${log.text}</span> <span class="log-time">${date}</span>`;
-            logList.appendChild(li);
-        });
-    }
-
-    // Setup Live Realtime Listeners
-    db
-        .channel('schema-db-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchAllData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, () => fetchAllData())
-        .subscribe();
-
-    // Run app
-    fetchAllData();
-</script>
-</body>
-</html>
+                    <label style="font-weight: bold;">2. Staged Adjustments List</label>
+                    <div class="batch-box">
+                        <div id
