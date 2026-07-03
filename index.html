@@ -69,7 +69,6 @@
         .log-time { color: #64748b; font-size: 0.8rem; white-space: nowrap; }
         .loading { text-align: center; color: #64748b; font-style: italic; }
 
-        /* Batch Cart UI Styles */
         .batch-box { background: #f1f5f9; border-radius: 6px; padding: 12px; margin-bottom: 15px; border: 1px dashed #cbd5e1; }
         .batch-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; }
         .batch-item:last-child { border-bottom: none; }
@@ -94,7 +93,7 @@
                     </div>
                     <div class="form-group">
                         <label for="item-max">Total Owned (Max Capacity Limit)</label>
-                        <input type="number" id="item-max" min="1" value="1" required placeholder="e.g., 1">
+                        <input type="number" id="item-max" min="1" value="1" required>
                     </div>
                     <div class="form-group">
                         <label for="item-qty">Current Initial Stock inside Storage</label>
@@ -166,7 +165,6 @@
 </div>
 
 <script>
-    // Configured with your exact Supabase credentials:
     const SUPABASE_URL = "https://iwvxsiyxrppjzxjsyyyu.supabase.co"; 
     const SUPABASE_ANON_KEY = "sb_publishable_npClwo_gzdj-K0Qd3iVoIQ_EUsEqLv_";
 
@@ -186,11 +184,9 @@
     const batchEmptyText = document.getElementById('batch-empty');
 
     async function fetchAllData() {
-        const { data: items, error: iErr } = await db.from('inventory').select('*').order('name', { ascending: true });
-        const { data: logs, error: lErr } = await db.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
+        const { data: items } = await db.from('inventory').select('*').order('name', { ascending: true });
+        const { data: logs } = await db.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
         
-        if (iErr || lErr) console.error("Fetch Error:", iErr || lErr);
-
         inventoryCache = items || [];
         renderInventory(inventoryCache);
         renderLogs(logs || []);
@@ -217,8 +213,7 @@
             addItemForm.reset();
             document.getElementById('item-qty').value = "1";
             document.getElementById('item-max').value = "1";
-        } else {
-            alert("Error adding item registry. Check your Supabase setup!");
+            fetchAllData();
         }
     });
 
@@ -235,7 +230,7 @@
         if (!item) return;
 
         if (pendingBatch.some(b => b.itemId === itemId)) {
-            alert("This item is already staged in your batch list below. Clear or process it first!");
+            alert("This item is already staged in your batch list below.");
             return;
         }
 
@@ -257,38 +252,41 @@
             div.className = 'batch-item';
             div.innerHTML = `
                 <span><strong>${b.type.toUpperCase()}</strong>: ${b.qty}x ${b.name}</span>
-                <button type="button" onclick="removeFromBatch(${index})" class="btn-sm btn-danger" style="padding: 2px 6px;">×</button>
+                <button type="button" class="btn-sm btn-danger remove-batch-btn" data-index="${index}" style="padding: 2px 6px;">×</button>
             `;
             batchListContainer.appendChild(div);
         });
-    }
 
-    window.removeFromBatch = function(index) {
-        pendingBatch.splice(index, 1);
-        renderBatch();
-    };
+        // Safe scope-free event listener targeting
+        document.querySelectorAll('.remove-batch-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.target.getAttribute('data-index'));
+                pendingBatch.splice(idx, 1);
+                renderBatch();
+            });
+        });
+    }
 
     transForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const user = document.getElementById('trans-user').value.trim();
 
         if (pendingBatch.length === 0) {
-            alert("Your staged adjustments list is empty! Add an item first.");
+            alert("Your staged adjustments list is empty!");
             return;
         }
 
         for (const action of pendingBatch) {
             const item = inventoryCache.find(i => i.id === action.itemId);
             if (!item) return;
-
-            const itemMax = item.max_qty !== null && item.max_qty !== undefined ? item.max_qty : 100;
+            const itemMax = item.max_qty || 100;
 
             if (action.type === 'out' && item.qty < action.qty) {
-                alert(`Batch Rejected! Insufficient stock for "${item.name}". You are trying to take ${action.qty}, but only ${item.qty} are in storage.`);
+                alert(`Batch Rejected! Insufficient stock for "${item.name}".`);
                 return;
             }
             if (action.type === 'in' && (item.qty + action.qty) > itemMax) {
-                alert(`Batch Rejected! Validation failed for "${item.name}". Returning ${action.qty} would bring storage to ${item.qty + action.qty}, which exceeds your total owned capacity limit (${itemMax}).`);
+                alert(`Batch Rejected! Validation failed for "${item.name}".`);
                 return;
             }
         }
@@ -296,7 +294,6 @@
         for (const action of pendingBatch) {
             const item = inventoryCache.find(i => i.id === action.itemId);
             const newQty = action.type === 'in' ? item.qty + action.qty : item.qty - action.qty;
-            
             await db.from('inventory').update({ qty: newQty }).eq('id', action.itemId);
             await db.from('logs').insert([{ text: `${user} signed ${action.type.toUpperCase()} ${action.qty}x "${item.name}"` }]);
         }
@@ -305,34 +302,110 @@
         renderBatch();
         document.getElementById('trans-user').value = '';
         alert("Batch completed successfully!");
+        fetchAllData();
     });
 
-    async function adjustQty(id, amount) {
-        const item = inventoryCache.find(i => i.id === id);
-        if (!item) return;
-        
-        const itemMax = item.max_qty !== null && item.max_qty !== undefined ? item.max_qty : 100;
+    // Native modern event binding handler replacements for inline HTML onclick attributes
+    function bindTableActions() {
+        document.querySelectorAll('.btn-quick-plus').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.target.getAttribute('data-id');
+                const item = inventoryCache.find(i => i.id === id);
+                if (!item || item.qty >= (item.max_qty || 100)) {
+                    alert("Validation Failed: Limit reached.");
+                    return;
+                }
+                await db.from('inventory').update({ qty: item.qty + 1 }).eq('id', id);
+                await db.from('logs').insert([{ text: `Quick adjustment: +1 on "${item.name}"` }]);
+                fetchAllData();
+            });
+        });
 
-        if (amount < 0 && item.qty <= 0) return;
-        if (amount > 0 && item.qty >= itemMax) {
-            alert(`Validation Failed: Stock cannot exceed the maximum capacity limit (${itemMax}) set for this item.`);
-            return;
-        }
+        document.querySelectorAll('.btn-quick-minus').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.target.getAttribute('data-id');
+                const item = inventoryCache.find(i => i.id === id);
+                if (!item || item.qty <= 0) return;
+                await db.from('inventory').update({ qty: item.qty - 1 }).eq('id', id);
+                await db.from('logs').insert([{ text: `Quick adjustment: -1 on "${item.name}"` }]);
+                fetchAllData();
+            });
+        });
 
-        const { error } = await db.from('inventory').update({ qty: item.qty + amount }).eq('id', id);
-        if(!error) {
-            await db.from('logs').insert([{ text: `Quick adjustment: ${amount > 0 ? '+1' : '-1'} on "${item.name}"` }]);
-        }
-    }
-
-    async function deleteItem(id) {
-        if (confirm("Permanently delete this item row from the registry?")) {
-            const item = inventoryCache.find(i => i.id === id);
-            await db.from('inventory').delete().eq('id', id);
-            if(item) await db.from('logs').insert([{ text: `Deleted item registry "${item.name}"` }]);
-        }
+        document.querySelectorAll('.btn-quick-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.target.getAttribute('data-id');
+                if (confirm("Permanently delete this item row?")) {
+                    const item = inventoryCache.find(i => i.id === id);
+                    await db.from('inventory').delete().eq('id', id);
+                    if(item) await db.from('logs').insert([{ text: `Deleted item registry "${item.name}"` }]);
+                    fetchAllData();
+                }
+            });
+        });
     }
 
     function renderInventory(items) {
         inventoryTableBody.innerHTML = '';
         transItemSelect.innerHTML = '<option value="">-- Choose an item --</option>';
+
+        if (items.length === 0) {
+            inventoryTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#64748b;">No items registered. Add one using the form!</td></tr>`;
+            return;
+        }
+
+        items.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.name;
+            transItemSelect.appendChild(option);
+
+            const statusClass = item.qty > 0 ? 'badge-success' : 'badge-danger';
+            const statusText = item.qty > 0 ? 'In Stock' : 'Out';
+            const itemMax = item.max_qty || 100;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${item.name}</strong></td>
+                <td><strong>${item.qty}</strong> / <span style="color:#64748b; font-size:0.9rem;">${itemMax}</span></td>
+                <td><span class="badge ${statusClass}">${statusText}</span></td>
+                <td>
+                    <div class="action-btns">
+                        <button class="btn-sm btn-success btn-quick-plus" data-id="${item.id}">+</button>
+                        <button class="btn-sm btn-danger btn-quick-minus" data-id="${item.id}">-</button>
+                        <button class="btn-sm btn-quick-delete" data-id="${item.id}" style="background:#e2e8f0; margin-left:5px;">×</button>
+                    </div>
+                </td>
+            `;
+            inventoryTableBody.appendChild(tr);
+        });
+
+        bindTableActions();
+    }
+
+    function renderLogs(logs) {
+        logList.innerHTML = '';
+        if (logs.length === 0) {
+            logList.innerHTML = '<li>No recent activity logged.</li>';
+            return;
+        }
+        logs.forEach(log => {
+            const date = new Date(log.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const li = document.createElement('li');
+            li.className = 'log-item';
+            li.innerHTML = `<span>${log.text}</span> <span class="log-time">${date}</span>`;
+            logList.appendChild(li);
+        });
+    }
+
+    // Set up real-time listener updates
+    db.channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchAllData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, () => fetchAllData())
+      .subscribe();
+
+    // Trigger explicit load
+    fetchAllData();
+</script>
+</body>
+</html>
