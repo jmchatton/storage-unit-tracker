@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Storage Tracker</title>
+    <title>FOCGRT Storage Unit Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -78,8 +78,8 @@
 
 <div class="container">
     <header>
-        <h1>Cloud Storage Tracker</h1>
-        <p>Real-time team inventory management with batch processing</p>
+        <h1>FOCGRT Storage Unit Tracker</h1>
+        <p>Real-time inventory management with batch processing</p>
     </header>
 
     <div class="grid">
@@ -257,7 +257,6 @@
             batchListContainer.appendChild(div);
         });
 
-        // Safe scope-free event listener targeting
         document.querySelectorAll('.remove-batch-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const idx = parseInt(e.target.getAttribute('data-index'));
@@ -282,11 +281,13 @@
             const itemMax = item.max_qty || 100;
 
             if (action.type === 'out' && item.qty < action.qty) {
-                alert(`Batch Rejected! Insufficient stock for "${item.name}".`);
+                alert(`Batch Rejected! Insufficient stock for "${item.name}". You are trying to take ${action.qty}, but only ${item.qty} remain in storage.`);
                 return;
             }
+            
+            // 3. Updated dynamic error message for batch validation limits
             if (action.type === 'in' && (item.qty + action.qty) > itemMax) {
-                alert(`Batch Rejected! Validation failed for "${item.name}".`);
+                alert(`Batch Rejected! All of these items ("${item.name}") have already been returned to the storage unit. (Capacity limit reached: ${item.qty}/${itemMax} currently inside).`);
                 return;
             }
         }
@@ -305,107 +306,8 @@
         fetchAllData();
     });
 
-    // Native modern event binding handler replacements for inline HTML onclick attributes
     function bindTableActions() {
         document.querySelectorAll('.btn-quick-plus').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const id = e.target.getAttribute('data-id');
-                const item = inventoryCache.find(i => i.id === id);
-                if (!item || item.qty >= (item.max_qty || 100)) {
-                    alert("Validation Failed: Limit reached.");
-                    return;
-                }
-                await db.from('inventory').update({ qty: item.qty + 1 }).eq('id', id);
-                await db.from('logs').insert([{ text: `Quick adjustment: +1 on "${item.name}"` }]);
-                fetchAllData();
-            });
-        });
-
-        document.querySelectorAll('.btn-quick-minus').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = e.target.getAttribute('data-id');
-                const item = inventoryCache.find(i => i.id === id);
-                if (!item || item.qty <= 0) return;
-                await db.from('inventory').update({ qty: item.qty - 1 }).eq('id', id);
-                await db.from('logs').insert([{ text: `Quick adjustment: -1 on "${item.name}"` }]);
-                fetchAllData();
-            });
-        });
-
-        document.querySelectorAll('.btn-quick-delete').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = e.target.getAttribute('data-id');
-                if (confirm("Permanently delete this item row?")) {
-                    const item = inventoryCache.find(i => i.id === id);
-                    await db.from('inventory').delete().eq('id', id);
-                    if(item) await db.from('logs').insert([{ text: `Deleted item registry "${item.name}"` }]);
-                    fetchAllData();
-                }
-            });
-        });
-    }
-
-    function renderInventory(items) {
-        inventoryTableBody.innerHTML = '';
-        transItemSelect.innerHTML = '<option value="">-- Choose an item --</option>';
-
-        if (items.length === 0) {
-            inventoryTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#64748b;">No items registered. Add one using the form!</td></tr>`;
-            return;
-        }
-
-        items.forEach(item => {
-            const option = document.createElement('option');
-            option.value = item.id;
-            option.textContent = item.name;
-            transItemSelect.appendChild(option);
-
-            const statusClass = item.qty > 0 ? 'badge-success' : 'badge-danger';
-            const statusText = item.qty > 0 ? 'In Stock' : 'Out';
-            const itemMax = item.max_qty || 100;
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${item.name}</strong></td>
-                <td><strong>${item.qty}</strong> / <span style="color:#64748b; font-size:0.9rem;">${itemMax}</span></td>
-                <td><span class="badge ${statusClass}">${statusText}</span></td>
-                <td>
-                    <div class="action-btns">
-                        <button class="btn-sm btn-success btn-quick-plus" data-id="${item.id}">+</button>
-                        <button class="btn-sm btn-danger btn-quick-minus" data-id="${item.id}">-</button>
-                        <button class="btn-sm btn-quick-delete" data-id="${item.id}" style="background:#e2e8f0; margin-left:5px;">×</button>
-                    </div>
-                </td>
-            `;
-            inventoryTableBody.appendChild(tr);
-        });
-
-        bindTableActions();
-    }
-
-    function renderLogs(logs) {
-        logList.innerHTML = '';
-        if (logs.length === 0) {
-            logList.innerHTML = '<li>No recent activity logged.</li>';
-            return;
-        }
-        logs.forEach(log => {
-            const date = new Date(log.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            const li = document.createElement('li');
-            li.className = 'log-item';
-            li.innerHTML = `<span>${log.text}</span> <span class="log-time">${date}</span>`;
-            logList.appendChild(li);
-        });
-    }
-
-    // Set up real-time listener updates
-    db.channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchAllData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, () => fetchAllData())
-      .subscribe();
-
-    // Trigger explicit load
-    fetchAllData();
-</script>
-</body>
-</html>
+                const item = inventoryCache.find(i =>
