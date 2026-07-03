@@ -85,25 +85,6 @@
     <div class="grid">
         <div class="space-y">
             <div class="card" style="margin-bottom: 20px;">
-                <h2>Add New Item Registry</h2>
-                <form id="add-item-form">
-                    <div class="form-group">
-                        <label for="item-name">Item Name</label>
-                        <input type="text" id="item-name" required placeholder="e.g., Folding Table">
-                    </div>
-                    <div class="form-group">
-                        <label for="item-max">Total Owned (Max Capacity Limit)</label>
-                        <input type="number" id="item-max" min="1" value="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="item-qty">Current Initial Stock inside Storage</label>
-                        <input type="number" id="item-qty" min="0" value="1" required>
-                    </div>
-                    <button type="submit" class="btn-primary">Add to System</button>
-                </form>
-            </div>
-
-            <div class="card" style="margin-bottom: 20px;">
                 <h2>Batch Sign-In / Sign-Out</h2>
                 
                 <div style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 15px;">
@@ -135,11 +116,40 @@
                 </form>
             </div>
 
-            <div class="card">
+            <div class="card" style="margin-bottom: 20px;">
                 <h2>Live Activity Log</h2>
                 <ul id="log-list" class="log-list">
                     <li class="loading">Connecting to database...</li>
                 </ul>
+            </div>
+
+            <div class="card">
+                <h2 id="registry-title">Register New Item</h2>
+                <form id="add-item-form">
+                    <div class="form-group">
+                        <label for="registry-mode-select">Select Mode / Target Item</label>
+                        <select id="registry-mode-select">
+                            <option value="NEW">[ + Register a New Item Type ]</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" id="wrapper-item-name">
+                        <label for="item-name">Item Name</label>
+                        <input type="text" id="item-name" placeholder="e.g., Folding Table">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label id="label-item-max" for="item-max">Total Owned (Max Capacity Limit)</label>
+                        <input type="number" id="item-max" min="1" value="1" required>
+                    </div>
+                    
+                    <div class="form-group" id="wrapper-item-qty">
+                        <label for="item-qty">Current Initial Stock inside Storage</label>
+                        <input type="number" id="item-qty" min="0" value="1" required>
+                    </div>
+                    
+                    <button type="submit" id="btn-registry-submit" class="btn-primary">Create Item Record</button>
+                </form>
             </div>
         </div>
 
@@ -174,6 +184,13 @@
     let pendingBatch = []; 
 
     const addItemForm = document.getElementById('add-item-form');
+    const registryModeSelect = document.getElementById('registry-mode-select');
+    const wrapperItemName = document.getElementById('wrapper-item-name');
+    const wrapperItemQty = document.getElementById('wrapper-item-qty');
+    const labelItemMax = document.getElementById('label-item-max');
+    const registryTitle = document.getElementById('registry-title');
+    const btnRegistrySubmit = document.getElementById('btn-registry-submit');
+
     const transForm = document.getElementById('trans-form');
     const transItemSelect = document.getElementById('trans-item');
     const inventoryTableBody = document.getElementById('inventory-table-body');
@@ -189,33 +206,92 @@
         
         inventoryCache = items || [];
         renderInventory(inventoryCache);
+        renderRegistryDropdown(inventoryCache);
         renderLogs(logs || []);
     }
 
-    addItemForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const name = document.getElementById('item-name').value.trim();
-        const max_qty = parseInt(document.getElementById('item-max').value);
-        const qty = parseInt(document.getElementById('item-qty').value);
-
-        if (qty > max_qty) {
-            alert(`Error: Initial stock (${qty}) cannot exceed your maximum owned limit (${max_qty})!`);
-            return;
-        }
-        if (inventoryCache.some(item => item.name.toLowerCase() === name.toLowerCase())) {
-            alert('This item type already exists.');
-            return;
-        }
-
-        const { error } = await db.from('inventory').insert([{ name, qty, max_qty }]);
-        if (!error) {
-            await db.from('logs').insert([{ text: `System initialized item "${name}" (${qty}/${max_qty} in stock)` }]);
-            addItemForm.reset();
-            document.getElementById('item-qty').value = "1";
-            document.getElementById('item-max').value = "1";
-            fetchAllData();
+    // Dynamic adaptation of the Smart Form based on dropdown state
+    registryModeSelect.addEventListener('change', (e) => {
+        const value = e.target.value;
+        if (value === "NEW") {
+            registryTitle.textContent = "Register New Item";
+            wrapperItemName.style.display = "block";
+            wrapperItemQty.style.display = "block";
+            labelItemMax.textContent = "Total Owned (Max Capacity Limit)";
+            btnRegistrySubmit.className = "btn-primary";
+            btnRegistrySubmit.textContent = "Create Item Record";
+            document.getElementById('item-name').required = true;
+        } else {
+            const selectedItem = inventoryCache.find(i => i.id === value);
+            registryTitle.textContent = `Update Config: ${selectedItem.name}`;
+            wrapperItemName.style.display = "none";
+            wrapperItemQty.style.display = "none";
+            labelItemMax.textContent = `Modify Max Capacity for ${selectedItem.name}`;
+            btnRegistrySubmit.className = "btn-primary";
+            btnRegistrySubmit.textContent = "Update Capacity Limit";
+            document.getElementById('item-max').value = selectedItem.max_qty || 100;
+            document.getElementById('item-name').required = false;
         }
     });
+
+    // Handle Smart Form execution (Add vs Update)
+    addItemForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const mode = registryModeSelect.value;
+        const max_qty = parseInt(document.getElementById('item-max').value);
+
+        if (mode === "NEW") {
+            const name = document.getElementById('item-name').value.trim();
+            const qty = parseInt(document.getElementById('item-qty').value);
+
+            if (qty > max_qty) {
+                alert(`Error: Initial stock (${qty}) cannot exceed your maximum owned limit (${max_qty})!`);
+                return;
+            }
+            if (inventoryCache.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+                alert('This item type already exists. Select it from the dropdown mode to edit its capacity.');
+                return;
+            }
+
+            const { error } = await db.from('inventory').insert([{ name, qty, max_qty }]);
+            if (!error) {
+                await db.from('logs').insert([{ text: `System initialized item "${name}" (${qty}/${max_qty} in stock)` }]);
+                addItemForm.reset();
+                resetRegistryFormState();
+                fetchAllData();
+            }
+        } else {
+            // Update mode verified by immutable ID
+            const selectedItem = inventoryCache.find(i => i.id === mode);
+            if (!selectedItem) return;
+
+            if (selectedItem.qty > max_qty) {
+                alert(`Error: You cannot lower capacity to ${max_qty} because there are currently ${selectedItem.qty} units inside the storage unit! Clear or pull stock out first.`);
+                return;
+            }
+
+            const { error } = await db.from('inventory').update({ max_qty: max_qty }).eq('id', mode);
+            if (!error) {
+                await db.from('logs').insert([{ text: `System configuration update: "${selectedItem.name}" capacity changed to ${max_qty}` }]);
+                addItemForm.reset();
+                resetRegistryFormState();
+                fetchAllData();
+                alert("Capacity limit updated successfully!");
+            }
+        }
+    });
+
+    function resetRegistryFormState() {
+        registryModeSelect.value = "NEW";
+        registryTitle.textContent = "Register New Item";
+        wrapperItemName.style.display = "block";
+        wrapperItemQty.style.display = "block";
+        labelItemMax.textContent = "Total Owned (Max Capacity Limit)";
+        btnRegistrySubmit.textContent = "Create Item Record";
+        document.getElementById('item-qty').value = "1";
+        document.getElementById('item-max').value = "1";
+        document.getElementById('item-name').required = true;
+    }
 
     btnAddBatch.addEventListener('click', () => {
         const itemId = transItemSelect.value;
@@ -284,8 +360,6 @@
                 alert(`Batch Rejected! Insufficient stock for "${item.name}". You are trying to take ${action.qty}, but only ${item.qty} remain in storage.`);
                 return;
             }
-            
-            // 3. Updated dynamic error message for batch validation limits
             if (action.type === 'in' && (item.qty + action.qty) > itemMax) {
                 alert(`Batch Rejected! All of these items ("${item.name}") have already been returned to the storage unit. (Capacity limit reached: ${item.qty}/${itemMax} currently inside).`);
                 return;
@@ -314,7 +388,6 @@
                 if (!item) return;
                 const itemMax = item.max_qty || 100;
                 
-                // 3. Updated error message for quick adjustment validation limits
                 if (item.qty >= itemMax) {
                     alert(`Action Cancelled: All of these items ("${item.name}") have already been returned to the storage unit.`);
                     return;
@@ -347,6 +420,19 @@
                 }
             });
         });
+    }
+
+    function renderRegistryDropdown(items) {
+        // Keeps user choice selected during data-polling redraws
+        const currentSelection = registryModeSelect.value;
+        registryModeSelect.innerHTML = '<option value="NEW">[ + Register a New Item Type ]</option>';
+        items.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.id;
+            opt.textContent = `[ Update Max ] ${item.name}`;
+            registryModeSelect.appendChild(opt);
+        });
+        registryModeSelect.value = currentSelection;
     }
 
     function renderInventory(items) {
