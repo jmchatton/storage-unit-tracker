@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Storage Unit Tracker</title>
+    <title>Team Storage Tracker</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -79,8 +79,8 @@
 
 <div class="container">
     <header>
-        <h1>Storage Unit Tracker</h1>
-        <p>Real-time inventory management with batch processing</p>
+        <h1>Cloud Storage Tracker</h1>
+        <p>Real-time team inventory management with batch processing</p>
     </header>
 
     <div class="grid">
@@ -125,4 +125,214 @@
                 <form id="trans-form">
                     <label style="font-weight: bold;">2. Staged Adjustments List</label>
                     <div class="batch-box">
-                        <div id
+                        <div id="batch-empty" style="color: #64748b; font-style: italic; font-size: 0.9rem; text-align: center;">No items staged yet.</div>
+                        <div id="batch-list-container"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="trans-user">Your Name</label>
+                        <input type="text" id="trans-user" required placeholder="Alex Smith">
+                    </div>
+                    <button type="submit" class="btn-primary">Process Entire Batch Change</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Live Activity Log</h2>
+                <ul id="log-list" class="log-list">
+                    <li class="loading">Connecting to database...</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Current Inventory</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item Name</th>
+                            <th>In Storage / Max</th>
+                            <th>Status</th>
+                            <th>Quick +/-</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-table-body">
+                        <tr><td colspan="4" class="loading">Fetching current stock...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Configured with your exact Supabase credentials:
+    const SUPABASE_URL = "https://iwvxsiyxrppjzxjsyyyu.supabase.co"; 
+    const SUPABASE_ANON_KEY = "sb_publishable_npClwo_gzdj-K0Qd3iVoIQ_EUsEqLv_";
+
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let inventoryCache = [];
+    let pendingBatch = []; 
+
+    const addItemForm = document.getElementById('add-item-form');
+    const transForm = document.getElementById('trans-form');
+    const transItemSelect = document.getElementById('trans-item');
+    const inventoryTableBody = document.getElementById('inventory-table-body');
+    const logList = document.getElementById('log-list');
+    
+    const btnAddBatch = document.getElementById('btn-add-batch');
+    const batchListContainer = document.getElementById('batch-list-container');
+    const batchEmptyText = document.getElementById('batch-empty');
+
+    async function fetchAllData() {
+        const { data: items, error: iErr } = await db.from('inventory').select('*').order('name', { ascending: true });
+        const { data: logs, error: lErr } = await db.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
+        
+        if (iErr || lErr) console.error("Fetch Error:", iErr || lErr);
+
+        inventoryCache = items || [];
+        renderInventory(inventoryCache);
+        renderLogs(logs || []);
+    }
+
+    addItemForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('item-name').value.trim();
+        const max_qty = parseInt(document.getElementById('item-max').value);
+        const qty = parseInt(document.getElementById('item-qty').value);
+
+        if (qty > max_qty) {
+            alert(`Error: Initial stock (${qty}) cannot exceed your maximum owned limit (${max_qty})!`);
+            return;
+        }
+        if (inventoryCache.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+            alert('This item type already exists.');
+            return;
+        }
+
+        const { error } = await db.from('inventory').insert([{ name, qty, max_qty }]);
+        if (!error) {
+            await db.from('logs').insert([{ text: `System initialized item "${name}" (${qty}/${max_qty} in stock)` }]);
+            addItemForm.reset();
+            document.getElementById('item-qty').value = "1";
+            document.getElementById('item-max').value = "1";
+        } else {
+            alert("Error adding item registry. Check your Supabase setup!");
+        }
+    });
+
+    btnAddBatch.addEventListener('click', () => {
+        const itemId = transItemSelect.value;
+        const type = document.getElementById('trans-type').value;
+        const qty = parseInt(document.getElementById('trans-qty').value);
+
+        if (!itemId) {
+            alert("Please select an item first!");
+            return;
+        }
+        const item = inventoryCache.find(i => i.id === itemId);
+        if (!item) return;
+
+        if (pendingBatch.some(b => b.itemId === itemId)) {
+            alert("This item is already staged in your batch list below. Clear or process it first!");
+            return;
+        }
+
+        pendingBatch.push({ itemId, name: item.name, type, qty });
+        renderBatch();
+        document.getElementById('trans-qty').value = "1";
+    });
+
+    function renderBatch() {
+        batchListContainer.innerHTML = '';
+        if (pendingBatch.length === 0) {
+            batchEmptyText.style.display = "block";
+            return;
+        }
+        batchEmptyText.style.display = "none";
+
+        pendingBatch.forEach((b, index) => {
+            const div = document.createElement('div');
+            div.className = 'batch-item';
+            div.innerHTML = `
+                <span><strong>${b.type.toUpperCase()}</strong>: ${b.qty}x ${b.name}</span>
+                <button type="button" onclick="removeFromBatch(${index})" class="btn-sm btn-danger" style="padding: 2px 6px;">×</button>
+            `;
+            batchListContainer.appendChild(div);
+        });
+    }
+
+    window.removeFromBatch = function(index) {
+        pendingBatch.splice(index, 1);
+        renderBatch();
+    };
+
+    transForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const user = document.getElementById('trans-user').value.trim();
+
+        if (pendingBatch.length === 0) {
+            alert("Your staged adjustments list is empty! Add an item first.");
+            return;
+        }
+
+        for (const action of pendingBatch) {
+            const item = inventoryCache.find(i => i.id === action.itemId);
+            if (!item) return;
+
+            const itemMax = item.max_qty !== null && item.max_qty !== undefined ? item.max_qty : 100;
+
+            if (action.type === 'out' && item.qty < action.qty) {
+                alert(`Batch Rejected! Insufficient stock for "${item.name}". You are trying to take ${action.qty}, but only ${item.qty} are in storage.`);
+                return;
+            }
+            if (action.type === 'in' && (item.qty + action.qty) > itemMax) {
+                alert(`Batch Rejected! Validation failed for "${item.name}". Returning ${action.qty} would bring storage to ${item.qty + action.qty}, which exceeds your total owned capacity limit (${itemMax}).`);
+                return;
+            }
+        }
+
+        for (const action of pendingBatch) {
+            const item = inventoryCache.find(i => i.id === action.itemId);
+            const newQty = action.type === 'in' ? item.qty + action.qty : item.qty - action.qty;
+            
+            await db.from('inventory').update({ qty: newQty }).eq('id', action.itemId);
+            await db.from('logs').insert([{ text: `${user} signed ${action.type.toUpperCase()} ${action.qty}x "${item.name}"` }]);
+        }
+
+        pendingBatch = [];
+        renderBatch();
+        document.getElementById('trans-user').value = '';
+        alert("Batch completed successfully!");
+    });
+
+    async function adjustQty(id, amount) {
+        const item = inventoryCache.find(i => i.id === id);
+        if (!item) return;
+        
+        const itemMax = item.max_qty !== null && item.max_qty !== undefined ? item.max_qty : 100;
+
+        if (amount < 0 && item.qty <= 0) return;
+        if (amount > 0 && item.qty >= itemMax) {
+            alert(`Validation Failed: Stock cannot exceed the maximum capacity limit (${itemMax}) set for this item.`);
+            return;
+        }
+
+        const { error } = await db.from('inventory').update({ qty: item.qty + amount }).eq('id', id);
+        if(!error) {
+            await db.from('logs').insert([{ text: `Quick adjustment: ${amount > 0 ? '+1' : '-1'} on "${item.name}"` }]);
+        }
+    }
+
+    async function deleteItem(id) {
+        if (confirm("Permanently delete this item row from the registry?")) {
+            const item = inventoryCache.find(i => i.id === id);
+            await db.from('inventory').delete().eq('id', id);
+            if(item) await db.from('logs').insert([{ text: `Deleted item registry "${item.name}"` }]);
+        }
+    }
+
+    function renderInventory(items) {
+        inventoryTableBody.innerHTML = '';
+        transItemSelect.innerHTML = '<option value="">-- Choose an item --</option>';
