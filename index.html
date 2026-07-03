@@ -156,8 +156,8 @@
     const SUPABASE_URL = "https://iwvxsiyxrppjzxjsyyyu.supabase.co/rest/v1/"; 
     const SUPABASE_ANON_KEY = "sb_publishable_npClwo_gzdj-K0Qd3iVoIQ_EUsEqLv_";
 
-    // Fixed initialization call:
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Fixed initialization conflict
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let inventoryCache = [];
 
@@ -170,8 +170,8 @@
 
     // Initial Data Fetch
     async function fetchAllData() {
-        const { data: items, error: iErr } = await supabase.from('inventory').select('*').order('name', { ascending: true });
-        const { data: logs, error: lErr } = await supabase.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
+        const { data: items, error: iErr } = await db.from('inventory').select('*').order('name', { ascending: true });
+        const { data: logs, error: lErr } = await db.from('logs').select('*').order('created_at', { ascending: false }).limit(15);
         
         if (iErr || lErr) {
             console.error("Fetch Error:", iErr || lErr);
@@ -193,9 +193,9 @@
             return;
         }
 
-        const { error } = await supabase.from('inventory').insert([{ name, qty }]);
+        const { error } = await db.from('inventory').insert([{ name, qty }]);
         if (!error) {
-            await supabase.from('logs').insert([{ text: `System initialized ${qty}x "${name}"` }]);
+            await db.from('logs').insert([{ text: `System initialized ${qty}x "${name}"` }]);
             addItemForm.reset();
         } else {
             console.error(error);
@@ -221,9 +221,9 @@
 
         const newQty = type === 'in' ? item.qty + qty : item.qty - qty;
         
-        const { error } = await supabase.from('inventory').update({ qty: newQty }).eq('id', itemId);
+        const { error } = await db.from('inventory').update({ qty: newQty }).eq('id', itemId);
         if (!error) {
-            await supabase.from('logs').insert([{ text: `${user} signed ${type.toUpperCase()} ${qty}x "${item.name}"` }]);
+            await db.from('logs').insert([{ text: `${user} signed ${type.toUpperCase()} ${qty}x "${item.name}"` }]);
             transForm.reset();
         }
     });
@@ -234,9 +234,9 @@
         if (!item) return;
         if (amount < 0 && item.qty <= 0) return;
 
-        const { error } = await supabase.from('inventory').update({ qty: item.qty + amount }).eq('id', id);
+        const { error } = await db.from('inventory').update({ qty: item.qty + amount }).eq('id', id);
         if(!error) {
-            await supabase.from('logs').insert([{ text: `Quick adjustment: ${amount > 0 ? '+1' : '-1'} on "${item.name}"` }]);
+            await db.from('logs').insert([{ text: `Quick adjustment: ${amount > 0 ? '+1' : '-1'} on "${item.name}"` }]);
         }
     }
 
@@ -244,8 +244,8 @@
     async function deleteItem(id) {
         if (confirm("Permanently delete this item row?")) {
             const item = inventoryCache.find(i => i.id === id);
-            await supabase.from('inventory').delete().eq('id', id);
-            if(item) await supabase.from('logs').insert([{ text: `Deleted item registry "${item.name}"` }]);
+            await db.from('inventory').delete().eq('id', id);
+            if(item) await db.from('logs').insert([{ text: `Deleted item registry "${item.name}"` }]);
         }
     }
 
@@ -301,7 +301,7 @@
     }
 
     // Setup Live Realtime Listeners
-    supabase
+    db
         .channel('schema-db-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchAllData())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, () => fetchAllData())
